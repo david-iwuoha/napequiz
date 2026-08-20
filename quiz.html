@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --text:#e2e8f0; --muted:#94a3b8;
+    --accent:#6366f1; --accent2:#818cf8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b;
+    --border:#334155;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+  }
+  .wrap{max-width:820px; margin:0 auto; padding:24px 16px 80px;}
+  h1{font-size:1.5rem; margin:0 0 4px;}
+  .sub{color:var(--muted); margin:0 0 24px; font-size:.9rem;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px;}
+  label{display:block; font-size:.85rem; color:var(--muted); margin:12px 0 6px;}
+  input[type=text],input[type=email],input[type=password],input[type=number],textarea{
+    width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); font-size:.95rem; font-family:inherit;
+  }
+  textarea{min-height:140px; font-family:ui-monospace,monospace; font-size:.8rem;}
+  button{
+    background:var(--accent); color:#fff; border:none; padding:10px 18px; border-radius:8px;
+    font-size:.9rem; font-weight:600; cursor:pointer; margin-top:14px;
+  }
+  button:hover{background:var(--accent2);}
+  button.secondary{background:var(--panel2); border:1px solid var(--border);}
+  button.danger{background:var(--bad);}
+  .row{display:flex; gap:10px; flex-wrap:wrap;}
+  .pill{display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; background:var(--panel2); color:var(--muted); border:1px solid var(--border);}
+  .top-nav{display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;}
+  .top-nav a{color:var(--muted); font-size:.8rem; text-decoration:none;}
+  .question{padding:16px 0; border-bottom:1px solid var(--border);}
+  .question:last-child{border-bottom:none;}
+  .qtitle{font-weight:600; margin-bottom:10px;}
+  .opt{display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; margin-bottom:6px; border:1px solid var(--border); cursor:pointer;}
+  .opt:hover{border-color:var(--accent);}
+  .opt input{accent-color:var(--accent);}
+  #timer{font-variant-numeric:tabular-nums; font-weight:700;}
+  #timer.low{color:var(--bad);}
+  table{width:100%; border-collapse:collapse; font-size:.82rem;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-weight:600;}
+  .flagged{color:var(--bad); font-weight:700;}
+  .banner{background:#3f1d1d; border:1px solid var(--bad); color:#fecaca; padding:12px 14px; border-radius:8px; margin-bottom:16px; display:none;}
+  .toast{
+    position:fixed; top:16px; left:50%; transform:translateX(-50%); background:var(--bad); color:#fff;
+    padding:12px 20px; border-radius:8px; font-weight:600; z-index:999; display:none;
+  }
+  .hidden{display:none !important;}
+  .muted{color:var(--muted); font-size:.85rem;}
+  .score-big{font-size:2.2rem; font-weight:800;}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div class="wrap">
+
+  <div class="top-nav">
+    <h1 id="siteTitle">Quiz</h1>
+    <a href="#" id="adminLink">Admin</a>
+  </div>
+
+  <!-- ============ CONFIG ============ -->
+  <script>
+    // PASTE your Google Apps Script "Web app URL" here after deploying code.gs
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzMlSFq0IKTwHQTf0fCdnmdCIIQN_3uK8_Dx9kZ2hxY6qp0B9OTTvo_iATacBdmKRe/exec";
+  </script>
+
+  <!-- ============ STUDENT: START SCREEN ============ -->
+  <div id="startScreen" class="card">
+    <p class="sub">Enter your details to begin. Once started, leaving this tab or exiting fullscreen will auto-submit your quiz.</p>
+    <label>Full name</label>
+    <input type="text" id="studentName" placeholder="e.g. Jane Doe">
+    <label>Email / Student ID</label>
+    <input type="text" id="studentId" placeholder="e.g. 190403123">
+    <button id="startBtn">Start Quiz</button>
+    <p class="muted" id="startError" style="color:var(--bad);"></p>
+  </div>
+
+  <!-- ============ STUDENT: QUIZ SCREEN ============ -->
+  <div id="quizScreen" class="card hidden">
+    <div class="banner" id="cheatBanner">⚠ Tab switch / focus loss detected. Submitting your quiz now.</div>
+    <div class="row" style="justify-content:space-between; align-items:center;">
+      <span class="pill" id="progressPill">Question 0 / 0</span>
+      <span class="pill">Time left: <span id="timer">--:--</span></span>
+    </div>
+    <div id="questionsContainer"></div>
+    <button id="submitBtn">Submit Quiz</button>
+  </div>
+
+  <!-- ============ STUDENT: RESULT SCREEN ============ -->
+  <div id="resultScreen" class="card hidden">
+    <p class="muted">Result</p>
+    <div class="score-big" id="scoreBig">-</div>
+    <p id="scoreDetail" class="muted"></p>
+  </div>
+
+  <!-- ============ ADMIN LOGIN ============ -->
+  <div id="adminLogin" class="card hidden">
+    <h2 style="margin-top:0;">Admin Login</h2>
+    <label>Admin key</label>
+    <input type="password" id="adminKeyInput" placeholder="Enter admin key">
+    <button id="adminLoginBtn">Login</button>
+    <p class="muted" id="adminLoginError" style="color:var(--bad);"></p>
+  </div>
+
+  <!-- ============ ADMIN PANEL ============ -->
+  <div id="adminPanel" class="card hidden">
+    <h2 style="margin-top:0;">Upload Question Bank</h2>
+    <p class="muted">Paste JSON (array of questions) or upload a .json file. Format:
+    <br><code>[{"id":"q1","category":"Math","difficulty":"easy","question":"2+2?","options":["3","4","5"],"correctIndex":1,"points":1}]</code></p>
+    <label>Quiz title</label>
+    <input type="text" id="quizTitleInput" placeholder="e.g. Midterm Assessment">
+    <label>Time limit (minutes, 0 = no limit)</label>
+    <input type="number" id="timeLimitInput" value="20" min="0">
+    <label>Upload .json file</label>
+    <input type="file" id="fileInput" accept=".json,application/json">
+    <label>...or paste JSON here</label>
+    <textarea id="jsonInput" placeholder="[ ... ]"></textarea>
+    <div class="row">
+      <button id="saveQuizBtn">Save Question Bank</button>
+      <button id="sortPreviewBtn" class="secondary">Preview Auto-Sort</button>
+    </div>
+    <p class="muted" id="adminMsg"></p>
+    <div id="sortPreview"></div>
+
+    <h2>Results</h2>
+    <div class="row">
+      <button id="refreshResultsBtn" class="secondary">Refresh Results</button>
+      <button id="exportCsvBtn" class="secondary">Export CSV</button>
+      <button id="logoutBtn" class="danger">Logout</button>
+    </div>
+    <div style="overflow-x:auto; margin-top:12px;">
+      <table id="resultsTable">
+        <thead>
+          <tr><th>Time</th><th>Name</th><th>ID</th><th>Score</th><th>%</th><th>Time Taken</th><th>Flagged</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ===================== STATE ===================== */
+let quizData = null;       // { title, timeLimitMinutes, questions: [...] }
+let studentQuestions = [];  // shuffled questions for this student
+let answers = {};           // { questionId: selectedIndex }
+let timerInterval = null;
+let secondsLeft = 0;
+let startTime = null;
+let submitted = false;
+let adminKey = sessionStorage.getItem("adminKey") || "";
+
+/* ===================== HELPERS ===================== */
+function $(id){ return document.getElementById(id); }
+function show(id){ $(id).classList.remove("hidden"); }
+function hide(id){ $(id).classList.add("hidden"); }
+function toast(msg){
+  const t = $("toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(()=>{ t.style.display = "none"; }, 4000);
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+async function api(action, params, isPost, body){
+  const url = new URL(APPS_SCRIPT_URL);
+  url.searchParams.set("action", action);
+  if(params) Object.keys(params).forEach(k=>url.searchParams.set(k, params[k]));
+  const opts = isPost ? {
+    method:"POST",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" }, // avoids CORS preflight on Apps Script
+    body: JSON.stringify(Object.assign({action}, body||{}))
+  } : {};
+  const res = await fetch(isPost ? APPS_SCRIPT_URL : url.toString(), opts);
+  return res.json();
+}
+
+/* ===================== ANTI-CHEAT ===================== */
+let cheatTriggered = false;
+function flagAndSubmit(reason){
+  if(submitted || cheatTriggered) return;
+  cheatTriggered = true;
+  $("cheatBanner").style.display = "block";
+  toast("Suspicious activity detected — auto-submitting.");
+  finishQuiz(true, reason);
+}
+function setupAntiCheat(){
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden && !submitted) flagAndSubmit("Tab switched / window hidden");
+  });
+  window.addEventListener("blur", ()=>{
+    if(!submitted && !cheatTriggered) flagAndSubmit("Window lost focus");
+  });
+  document.addEventListener("fullscreenchange", ()=>{
+    if(!document.fullscreenElement && !submitted && quizStarted){
+      flagAndSubmit("Exited fullscreen");
+    }
+  });
+  document.addEventListener("copy", e=>{ if(quizStarted && !submitted) e.preventDefault(); });
+  document.addEventListener("paste", e=>{ if(quizStarted && !submitted) e.preventDefault(); });
+  document.addEventListener("contextmenu", e=>{ if(quizStarted && !submitted) e.preventDefault(); });
+  document.addEventListener("keydown", e=>{
+    if(!quizStarted || submitted) return;
+    // Block common devtools / copy shortcuts (best-effort only)
+    if(e.key === "F12") e.preventDefault();
+    if((e.ctrlKey||e.metaKey) && ["c","v","u","s"].includes(e.key.toLowerCase())) e.preventDefault();
+    if((e.ctrlKey||e.metaKey) && e.shiftKey && ["i","j","c"].includes(e.key.toLowerCase())) e.preventDefault();
+  });
+}
+let quizStarted = false;
+
+/* ===================== STUDENT FLOW ===================== */
+$("startBtn").onclick = async ()=>{
+  const name = $("studentName").value.trim();
+  const id = $("studentId").value.trim();
+  if(!name){ $("startError").textContent = "Please enter your name."; return; }
+  $("startError").textContent = "";
+  $("startBtn").disabled = true;
+  $("startBtn").textContent = "Loading quiz...";
+  try{
+    const data = await api("getQuiz");
+    if(!data.ok){ $("startError").textContent = data.error || "Could not load quiz."; $("startBtn").disabled=false; $("startBtn").textContent="Start Quiz"; return; }
+    quizData = data;
+    window.studentName = name;
+    window.studentId = id;
+    beginQuiz();
+  }catch(err){
+    $("startError").textContent = "Error contacting server. Check APPS_SCRIPT_URL.";
+    $("startBtn").disabled = false;
+    $("startBtn").textContent = "Start Quiz";
+  }
+};
+
+function beginQuiz(){
+  $("siteTitle").textContent = quizData.title || "Quiz";
+  // Auto-sort: group by category, then shuffle within each category; shuffle option order too
+  const byCategory = {};
+  quizData.questions.forEach(q=>{
+    const cat = q.category || "General";
+    if(!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(q);
+  });
+  let ordered = [];
+  Object.keys(byCategory).sort().forEach(cat=>{
+    ordered = ordered.concat(shuffle(byCategory[cat]));
+  });
+  studentQuestions = ordered.map(q=>{
+    const optIndexes = shuffle(q.options.map((_,i)=>i));
+    return {
+      id: q.id,
+      category: q.category,
+      question: q.question,
+      points: q.points,
+      displayOptions: optIndexes.map(i=>q.options[i]),
+      indexMap: optIndexes // displayOptions[k] corresponds to original index optIndexes[k]
+    };
+  });
+
+  hide("startScreen");
+  show("quizScreen");
+  renderQuestions();
+
+  quizStarted = true;
+  startTime = Date.now();
+  setupAntiCheat();
+
+  // best-effort fullscreen
+  if(document.documentElement.requestFullscreen){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }
+
+  if(quizData.timeLimitMinutes > 0){
+    secondsLeft = quizData.timeLimitMinutes * 60;
+    updateTimerDisplay();
+    timerInterval = setInterval(()=>{
+      secondsLeft--;
+      updateTimerDisplay();
+      if(secondsLeft <= 0){
+        clearInterval(timerInterval);
+        finishQuiz(false, "Time expired");
+      }
+    }, 1000);
+  } else {
+    $("timer").textContent = "No limit";
+  }
+}
+
+function updateTimerDisplay(){
+  const m = Math.floor(secondsLeft/60), s = secondsLeft%60;
+  $("timer").textContent = String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+  $("timer").classList.toggle("low", secondsLeft <= 30);
+}
+
+function renderQuestions(){
+  const c = $("questionsContainer");
+  c.innerHTML = "";
+  studentQuestions.forEach((q, idx)=>{
+    const div = document.createElement("div");
+    div.className = "question";
+    div.innerHTML = `<div class="qtitle">${idx+1}. ${escapeHtml(q.question)} <span class="pill">${escapeHtml(q.category||"")}</span></div>`;
+    q.displayOptions.forEach((optText, k)=>{
+      const originalIndex = q.indexMap[k];
+      const optDiv = document.createElement("label");
+      optDiv.className = "opt";
+      optDiv.innerHTML = `<input type="radio" name="${q.id}" value="${originalIndex}"> <span>${escapeHtml(optText)}</span>`;
+      optDiv.querySelector("input").addEventListener("change", ()=>{
+        answers[q.id] = originalIndex;
+      });
+      div.appendChild(optDiv);
+    });
+    c.appendChild(div);
+  });
+  $("progressPill").textContent = `Question ${studentQuestions.length} total`;
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[s]));
+}
+
+$("submitBtn").onclick = ()=> finishQuiz(false, "");
+
+async function finishQuiz(flagged, reason){
+  if(submitted) return;
+  submitted = true;
+  if(timerInterval) clearInterval(timerInterval);
+  if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+  const timeTakenSec = Math.round((Date.now() - startTime)/1000);
+
+  hide("quizScreen");
+  show("resultScreen");
+  $("scoreBig").textContent = "Submitting...";
+  $("scoreDetail").textContent = "";
+
+  try{
+    const res = await api("submitResult", null, true, {
+      name: window.studentName,
+      studentId: window.studentId,
+      answers: answers,
+      timeTakenSec: timeTakenSec,
+      flagged: flagged,
+      flagReason: reason
+    });
+    if(res.ok){
+      $("scoreBig").textContent = res.score + " / " + res.total;
+      $("scoreDetail").textContent = res.percent + "%" + (flagged ? " — Flagged: " + reason : "");
+    } else {
+      $("scoreBig").textContent = "Submitted";
+      $("scoreDetail").textContent = res.error || "Could not compute score.";
+    }
+  }catch(err){
+    $("scoreBig").textContent = "Submitted (offline)";
+    $("scoreDetail").textContent = "Could not reach server to confirm score.";
+  }
+}
+
+/* ===================== ADMIN FLOW ===================== */
+$("adminLink").onclick = (e)=>{
+  e.preventDefault();
+  hide("startScreen"); hide("quizScreen"); hide("resultScreen");
+  if(adminKey){ show("adminPanel"); loadResults(); }
+  else { show("adminLogin"); }
+};
+
+$("adminLoginBtn").onclick = async ()=>{
+  const key = $("adminKeyInput").value.trim();
+  if(!key){ return; }
+  // We validate by attempting a getResults call
+  adminKey = key;
+  const res = await api("getResults", {adminKey});
+  if(res.ok){
+    sessionStorage.setItem("adminKey", key);
+    $("adminLoginError").textContent = "";
+    hide("adminLogin"); show("adminPanel");
+    renderResultsTable(res.results);
+  } else {
+    adminKey = "";
+    $("adminLoginError").textContent = "Incorrect admin key.";
+  }
+};
+
+$("logoutBtn").onclick = ()=>{
+  sessionStorage.removeItem("adminKey");
+  adminKey = "";
+  hide("adminPanel");
+  show("startScreen");
+};
+
+$("fileInput").onchange = (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ $("jsonInput").value = reader.result; };
+  reader.readAsText(file);
+};
+
+$("sortPreviewBtn").onclick = ()=>{
+  try{
+    const questions = JSON.parse($("jsonInput").value);
+    const byCategory = {};
+    questions.forEach(q=>{
+      const cat = q.category || "General";
+      if(!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(q);
+    });
+    let html = "<p class='muted'>Preview of grouping (order randomizes per student on each attempt):</p>";
+    Object.keys(byCategory).sort().forEach(cat=>{
+      html += `<p><strong>${escapeHtml(cat)}</strong> — ${byCategory[cat].length} question(s)</p>`;
+    });
+    $("sortPreview").innerHTML = html;
+  }catch(err){
+    $("sortPreview").innerHTML = "<p style='color:var(--bad)'>Invalid JSON.</p>";
+  }
+};
+
+$("saveQuizBtn").onclick = async ()=>{
+  let questions;
+  try{
+    questions = JSON.parse($("jsonInput").value);
+    if(!Array.isArray(questions)) throw new Error("Must be an array");
+  }catch(err){
+    $("adminMsg").textContent = "Invalid JSON: " + err.message;
+    $("adminMsg").style.color = "var(--bad)";
+    return;
+  }
+  $("adminMsg").textContent = "Saving...";
+  $("adminMsg").style.color = "var(--muted)";
+  const res = await api("saveQuiz", null, true, {
+    adminKey,
+    title: $("quizTitleInput").value.trim() || "Untitled Quiz",
+    timeLimitMinutes: Number($("timeLimitInput").value) || 0,
+    questions
+  });
+  if(res.ok){
+    $("adminMsg").textContent = "Saved! " + questions.length + " questions live.";
+    $("adminMsg").style.color = "var(--good)";
+  } else {
+    $("adminMsg").textContent = res.error || "Failed to save.";
+    $("adminMsg").style.color = "var(--bad)";
+  }
+};
+
+let lastResults = [];
+async function loadResults(){
+  const res = await api("getResults", {adminKey});
+  if(res.ok){ lastResults = res.results; renderResultsTable(res.results); }
+}
+$("refreshResultsBtn").onclick = loadResults;
+
+function renderResultsTable(rows){
+  const tbody = document.querySelector("#resultsTable tbody");
+  tbody.innerHTML = "";
+  rows.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${new Date(r["Timestamp"]).toLocaleString()}</td>
+      <td>${escapeHtml(r["Name"]||"")}</td>
+      <td>${escapeHtml(r["Email/ID"]||"")}</td>
+      <td>${r["Score"]} / ${r["Total"]}</td>
+      <td>${r["Percent"]}%</td>
+      <td>${r["TimeTakenSec"]}s</td>
+      <td class="${r["Flagged"]==="YES" ? "flagged":""}">${r["Flagged"]}${r["FlagReason"]?(" — "+escapeHtml(r["FlagReason"])):""}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+$("exportCsvBtn").onclick = ()=>{
+  if(!lastResults.length){ toast("No results to export."); return; }
+  const headers = Object.keys(lastResults[0]);
+  const csv = [headers.join(",")].concat(
+    lastResults.map(r=>headers.map(h=>`"${String(r[h]).replace(/"/g,'""')}"`).join(","))
+  ).join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "quiz_results.csv";
+  a.click();
+};
+
+/* ===================== INIT ===================== */
+if(adminKey){
+  hide("startScreen");
+  show("adminPanel");
+  loadResults();
+}
+</script>
+</body>
+</html>
